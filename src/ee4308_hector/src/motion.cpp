@@ -60,27 +60,50 @@ void cbImu(const sensor_msgs::Imu::ConstPtr &msg)
 // https://docs.ros.org/en/api/sensor_msgs/html/msg/NavSatFix.html
 cv::Matx31d GPS = {NaN, NaN, NaN};
 cv::Matx31d initial_pos = {NaN, NaN, NaN}; // written below in main. no further action needed.
+cv::Matx31d initial_ECEF = {NaN, Nan, Nan}; 
 const double DEG2RAD = M_PI / 180;
 const double RAD_POLAR = 6356752.3;
 const double RAD_EQUATOR = 6378137;
+const double e_sq = 1 - (RAD_POLAR * RAD_POLAR) / (RAD_EQUATOR * RAD_EQUATOR);
 double r_gps_x, r_gps_y, r_gps_z;
 void cbGps(const sensor_msgs::NavSatFix::ConstPtr &msg)
 {
     if (!ready)
         return;
+    cv::Matx31d ECEF = {NaN, NaN, NaN};
+    cv::Matx33d R_en = {NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN};
+    // IMPLEMENT GPS /////
+    double lat = msg->latitude;
+    double lon = msg->longitude;
+    double alt = msg->altitude;
 
-    //// IMPLEMENT GPS /////
-    // double lat = msg->latitude;
-    // double lon = msg->longitude;
-    // double alt = msg->altitude;
+    lat = lat * DEG2RAD;
+    lon = lon * DEG2RAD;
     
-    // // for initial message -- you may need this:
-    // if (std::isnan(initial_ECEF(0)))
-    // {   // calculates initial ECEF and returns
-    //     initial_ECEF = ECEF;
-    //     return;
-    // }
+    double N_lat = RAD_EQUATOR / sqrt(1 - e_sq * sin(lat) * sin(lat));
+    ECEF(0) = (N_lat + alt) * cos(lat) * cos(lon);
+    ECEF(1) = (N_lat + alt) * cos(lat) * sin(lon);
+    ECEF(2) = (N_lat * (1 - e_sq) + alt) * sin(lat);
+
+    R_en(0, 0) = -sin(lat)*cos(lon);
+    R_en(0, 1) = -sin(lon);
+    R_en(0, 2) = -cos(lat)*cos(lon);
+    R_en(1, 0) = -sin(lat)*sin(lon);
+    R_en(1, 1) = cos(lon);
+    R_en(1, 2) = -cos(lat)*sin(lon);
+    R_en(2, 0) = cos(lat);
+    R_en(2, 1) = 0;
+    R_en(2, 2) = -sin(lat);
     
+    // for initial message -- you may need this:
+    if (std::isnan(initial_ECEF(0)))
+    {   // calculates initial ECEF and returns
+        initial_ECEF = ECEF;
+        return;
+    }
+    cv::Matx31d NED = R_en * (ECEF - initial_ECEF);
+    cv::Matx33d R = {1,0,0,0,-1,0,0,0,-1};
+    GPS = R * NED + initial_pos;
 }
 
 // --------- Magnetic ----------
