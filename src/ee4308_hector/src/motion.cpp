@@ -104,6 +104,19 @@ void cbGps(const sensor_msgs::NavSatFix::ConstPtr &msg)
     cv::Matx31d NED = R_en * (ECEF - initial_ECEF);
     cv::Matx33d R = {1,0,0,0,-1,0,0,0,-1};
     GPS = R * NED + initial_pos;
+    cv::Matx21d H_gps = {1,0};
+    cv::Matx11d V = {1};
+    cv::Matx21d K_x = P_x * H_gps.t() * (H_gps * P_x * H_gps.t() + V *r_gps_x* V.t()).inv();
+    X(0) = X(0) + K_x(0,0) * (GPS(0) - X(0));
+    P_x = P_x - K_x * H_gps * P_x;
+
+    cv::Matx21d K_y = P_y * H_gps.t() * (H_gps * P_y * H_gps.t() + V *r_gps_y* V.t()).inv();
+    Y(0) = Y(0) + K_y(0,0) * (GPS(1) - Y(0));
+    P_y = P_y - K_y * H_gps * P_y;
+
+    cv::Matx21d K_z = P_z * H_gps.t() * (H_gps * P_z * H_gps.t() + V *r_gps_z* V.t()).inv();
+    Z(0) = Z(0) + K_z(0,0) * (GPS(2) - Z(0));
+    P_z = P_z - K_z * H_gps * P_z;
 }
 
 // --------- Magnetic ----------
