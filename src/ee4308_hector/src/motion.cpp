@@ -101,7 +101,7 @@ void cbGps(const sensor_msgs::NavSatFix::ConstPtr &msg)
         initial_ECEF = ECEF;
         return;
     }
-    cv::Matx31d NED = R_en * (ECEF - initial_ECEF);
+    cv::Matx31d NED = R_en.t() * (ECEF - initial_ECEF);
     cv::Matx33d R = {1,0,0,0,-1,0,0,0,-1};
     GPS = R * NED + initial_pos;
     cv::Matx21d H_gps = {1,0};
