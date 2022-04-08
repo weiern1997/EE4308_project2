@@ -54,13 +54,44 @@ void cbImu(const sensor_msgs::Imu::ConstPtr &msg)
     uz = msg->linear_acceleration.z;
     
     //// IMPLEMENT IMU ////
+    cv::Matx22d F_x = {1, imu_dt, 0, 1};
+    cv::Matx22d W_x = {-0.5 * pow(imu_dt, 2) * cos(A(0)), 0.5 *  pow(imu_dt, 2) * sin(A(0)),
+                        -imu_dt * cos(A(0)), imu_dt * sin(A(0))};
+    cv::Matx21d U_x = {ux, uy};
+    X = F_x * X + W_x * U_x;
+    cv::Matx22d Q_x = {qx * qx, 0, 0, qy * qy};
+    P_x = F_x * P_x * F_x.t() + W_x * Q_x * W_x.t();
+
+    cv::Matx22d F_y = {1, imu_dt, 0, 1};
+    cv::Matx22d W_y = {-0.5 * pow(imu_dt, 2) * sin(A(0)), -0.5 *  pow(imu_dt, 2) * cos(A(0)),
+                        -imu_dt * sin(A(0)), -imu_dt * cos(A(0))};
+    cv::Matx21d U_y = {ux, uy};
+    Y = F_y * Y + W_y * U_y;
+    cv::Matx22d Q_y = {qx * qx, 0, 0, qy * qy}; //check
+    P_y = F_y * P_y * F_y.t() + W_y * Q_y * W_y.t();
+
+    cv::Matx22d F_z = {1, imu_dt, 0, 1};
+    cv::Matx22d W_z = {0.5 * pow(imu_dt, 2), -0.5 *  pow(imu_dt, 2),
+                        imu_dt, -imu_dt};
+    cv::Matx21d U_z = {uz, G};
+    Z = F_z * Z + W_z * U_z;
+    cv::Matx22d Q_z = {qz * qz}; //check
+    P_z = F_z * P_z * F_z.t() + W_z * Q_z * W_z.t();
+
+    cv::Matx22d F_phi = {1, 0, 0, 1};
+    cv::Matx22d W_phi= {imu_dt, 0,
+                        0, 1};
+    cv::Matx21d U_phi = {A(1), A(1)};
+    A = F_phi * A + W_phi * U_phi;
+    cv::Matx22d Q_phi = {qa * qa}; //check
+    P_a = F_phi * P_a * F_phi.t() + W_phi * Q_phi * W_phi.t();
 }
 
 // --------- GPS ----------
 // https://docs.ros.org/en/api/sensor_msgs/html/msg/NavSatFix.html
 cv::Matx31d GPS = {NaN, NaN, NaN};
 cv::Matx31d initial_pos = {NaN, NaN, NaN}; // written below in main. no further action needed.
-cv::Matx31d initial_ECEF = {NaN, Nan, Nan}; 
+cv::Matx31d initial_ECEF = {NaN, NaN, NaN}; 
 const double DEG2RAD = M_PI / 180;
 const double RAD_POLAR = 6356752.3;
 const double RAD_EQUATOR = 6378137;
@@ -104,26 +135,29 @@ void cbGps(const sensor_msgs::NavSatFix::ConstPtr &msg)
     cv::Matx31d NED = R_en.t() * (ECEF - initial_ECEF);
     cv::Matx33d R = {1,0,0,0,-1,0,0,0,-1};
     GPS = R * NED + initial_pos;
-    cv::Matx21d H_gps = {1,0};
-    cv::Matx11d V = {1};
-    cv::Matx21d K_x = P_x * H_gps.t() * (H_gps * P_x * H_gps.t() + V *r_gps_x* V.t()).inv();
-    X(0) = X(0) + K_x(0,0) * (GPS(0) - X(0));
+    cv::Matx12d H_gps = {1,0};
+    cv::Mat1d V = {1};
+    
+    cv::Mat1d M_x = H_gps * P_x * H_gps.t() + V *r_gps_x* V.t();
+    cv::Matx21d K_x = P_x * H_gps.t() * (1 / M_x(0));
+    X = X + K_x * (GPS(0) - X(0));
     P_x = P_x - K_x * H_gps * P_x;
 
-    cv::Matx21d K_y = P_y * H_gps.t() * (H_gps * P_y * H_gps.t() + V *r_gps_y* V.t()).inv();
-    Y(0) = Y(0) + K_y(0,0) * (GPS(1) - Y(0));
+    cv::Mat1d M_y = H_gps * P_y * H_gps.t() + V *r_gps_y* V.t();
+    cv::Matx21d K_y = P_y * H_gps.t() * (1 / M_y(0));
+    Y = Y + K_y * (GPS(1) - Y(0));
     P_y = P_y - K_y * H_gps * P_y;
 
-    cv::Matx21d K_z = P_z * H_gps.t() * (H_gps * P_z * H_gps.t() + V *r_gps_z* V.t()).inv();
-    Z(0) = Z(0) + K_z(0,0) * (GPS(2) - Z(0));
+    cv::Mat1d M_z = H_gps * P_z * H_gps.t() + V *r_gps_z* V.t();
+    cv::Matx21d K_z = P_z * H_gps.t() * (1 / M_z(0));
+    Z = Z + K_z * (GPS(2) - Z(0));
     P_z = P_z - K_z * H_gps * P_z;
 }
 
 // --------- Magnetic ----------
 double a_mgn = NaN;
 double r_mgn_a;
-if (!nh.param("r_mgn_a", r_mgn_a, 1.0e-1))
-        ROS_WARN(" HMAIN : Param r_mgn_a not found");
+
 void cbMagnet(const geometry_msgs::Vector3Stamped::ConstPtr &msg)
 {
     if (!ready)
@@ -137,14 +171,20 @@ void cbMagnet(const geometry_msgs::Vector3Stamped::ConstPtr &msg)
     r_mgn_a = r_mgn_a;//from hector.yaml
     
 
-    cv::Matx11d Y = {a_mgn};
-    cv::Matx11d h_X = {A(0)};
-    cv::Matx21d H = {1, 0};
-    cv::Matx11d V = {1};
-    cv::Matx11d R = {r_mgn_a};
+    cv::Mat1d Y = {a_mgn};
+    // double Y = a_mgn;
+    cv::Mat1d h_X = {A(0)};
+    // // double h_X = A(0);
+    cv::Matx12d H = {1, 0};
+    cv::Mat1d V = {1};
+    // // double V = 1;
+    cv::Mat1d R = {r_mgn_a};
+    // // double R = r_mgn_a;
 
-    cv::Matx11d K = P_a * H.t() * (H * P_a * H.t() + V * R * V).inv();
-    A(0) = A(0) + K * (Y - h_X);
+    cv::Mat1d M = (H * P_a * H.t() + V * R * V);
+    cv::Matx21d K = P_a * H.t() * (1/ M(0));
+    // double K = P_a * H.t() * (H * P_a * H.t() + V * R * V).inv();
+    A = A + K * (Y(0)- h_X(0));
     P_a = P_a - (K * H * P_a);
 }
 

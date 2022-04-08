@@ -1,2 +1,2 @@
 ee4308_bringup:ee4308_hector:ee4308_turtle
--DCMAKE_BUILD_TYPE=Release -DCATKIN_DEVEL_PREFIX=/home/pgokul/team01/EE4308_project2/devel -DCMAKE_INSTALL_PREFIX=/home/pgokul/team01/EE4308_project2/install -G Unix Makefiles
+-DCMAKE_BUILD_TYPE=Release -DCATKIN_DEVEL_PREFIX=/home/pgokul/EE4308_project2/devel -DCMAKE_INSTALL_PREFIX=/home/pgokul/EE4308_project2/install -G Unix Makefiles
