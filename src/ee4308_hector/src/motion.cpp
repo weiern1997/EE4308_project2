@@ -122,14 +122,30 @@ void cbGps(const sensor_msgs::NavSatFix::ConstPtr &msg)
 // --------- Magnetic ----------
 double a_mgn = NaN;
 double r_mgn_a;
+if (!nh.param("r_mgn_a", r_mgn_a, 1.0e-1))
+        ROS_WARN(" HMAIN : Param r_mgn_a not found");
 void cbMagnet(const geometry_msgs::Vector3Stamped::ConstPtr &msg)
 {
     if (!ready)
         return;
     
     //// IMPLEMENT GPS ////
-    // double mx = msg->vector.x;
-    // double my = msg->vector.y;
+    double mx = msg->vector.x;
+    double my = msg->vector.y;
+
+    a_mgn = - atan2(my, mx);
+    r_mgn_a = r_mgn_a;//from hector.yaml
+    
+
+    cv::Matx11d Y = {a_mgn};
+    cv::Matx11d h_X = {A(0)};
+    cv::Matx21d H = {1, 0};
+    cv::Matx11d V = {1};
+    cv::Matx11d R = {r_mgn_a};
+
+    cv::Matx11d K = P_a * H.t() * (H * P_a * H.t() + V * R * V).inv();
+    A(0) = A(0) + K * (Y - h_X);
+    P_a = P_a - (K * H * P_a);
 }
 
 // --------- Baro ----------
