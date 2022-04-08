@@ -14,6 +14,21 @@ double sign(double value)
     else
         return 0;
 }
+double sat(double value, double value_limit)
+{
+    if (value > value_limit)
+    {
+        return value_limit;
+    }
+    else if (value < -value_limit)
+    {
+        return -value_limit;
+    }
+    else
+    {
+        return value;
+    }
+}
 double dist_oct(Index src, Index tgt)
 {
     return dist_oct(src.i, src.j, tgt.i, tgt.j);

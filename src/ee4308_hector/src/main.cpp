@@ -139,12 +139,13 @@ int main(int argc, char **argv)
     // --------- Publishers ----------
     ros::Publisher pub_target = nh.advertise<geometry_msgs::PointStamped>("target", 1, true);
     geometry_msgs::PointStamped msg_target;
-    msg_target.header.frame_id = "world";
+    msg_target.header.frame_id = "world";  // for rviz
     ros::Publisher pub_rotate = nh.advertise<std_msgs::Bool>("rotate", 1, true);
     std_msgs::Bool msg_rotate;
     ros::Publisher pub_traj = nh.advertise<nav_msgs::Path>("trajectory", 1, true);
     nav_msgs::Path msg_traj;
     msg_traj.header.frame_id = "world";
+    // state = TAKEOFF;
 
     // --------- Wait for Topics ----------
     while (ros::ok() && nh.param("run", true) && (std::isnan(x) || std::isnan(turtle_x) || std::isnan(vx))) // not dependent on main.cpp, but on motion.cpp
@@ -154,37 +155,107 @@ int main(int argc, char **argv)
     ROS_INFO(" HMAIN : ===== BEGIN =====");
     HectorState state = TAKEOFF;
     ros::Rate rate(main_iter_rate);
+    double prev_time = ros::Time::now().toSec();
+    double prev_turtle_x = turtle_x;
+    double prev_turtle_y = turtle_y;
+    double dx = 0;
+    double dy = 0;
+    double dt;
+    double distance_hector_turtle = 0;
+    double distance_hector_goal = 0;
+    double distance_hector_start = 0;
+
     while (ros::ok() && nh.param("run", true))
     {
         // get topics
         ros::spinOnce();
 
+        // ROS_INFO(" HMAIN : Drone's state is %d", state==TAKEOFF);
+
+        dt = ros::Time::now().toSec() - prev_time;
+        if (dt == 0) // ros doesn't tick the time fast enough
+            continue;
+        prev_time += dt;
+
         //// IMPLEMENT ////
-        // if (state == TAKEOFF)
-        // {
-            // // Disable Rotate
-            // msg_rotate.data = false;
-            // pub_rotate.publish(msg_rotate)
-        // }
-        // else if (state == TURTLE)
-        // {
-            
-        // }
-        // else if (state == START)
-        // {
-            // if (!nh.param("/turtle/run", false))
-            // { // when the turtle reaches the final goal
-                // state = LAND;
-            // }
-        // }
-        // else if (state == GOAL)
-        // {
-            
-        // }
-        // else if (state == LAND)
-        // {
-            
-        // }
+        if (state == TAKEOFF)
+        {
+            msg_target.point.x = initial_x;
+            msg_target.point.y = initial_y;
+            msg_target.point.z = initial_z + 2;
+            pub_target.publish(msg_target);
+            ROS_INFO(" HMAIN : Drone's state is TAKEOFF");
+            // Disable Rotate
+            msg_rotate.data = true;
+            pub_rotate.publish(msg_rotate);
+            if(z >= 1.8 and z <= 2.2){
+                state = TURTLE;
+            } 
+        }
+        else if (state == TURTLE)
+        {
+            dx = (turtle_x - prev_turtle_x) / dt;
+            dy = (turtle_y - prev_turtle_y) / dt;
+
+            /// Find the future point of turtle using look ahead ///
+            msg_target.point.x = turtle_x + (dx * look_ahead);
+            msg_target.point.y = turtle_y + (dy * look_ahead);
+            pub_target.publish(msg_target);
+            prev_turtle_x = turtle_x;
+            prev_turtle_y = turtle_y;
+
+            distance_hector_turtle = pow((x - turtle_x),2) + pow((y - turtle_y),2);
+            distance_hector_turtle = sqrt(distance_hector_turtle);
+            ROS_INFO(" HMAIN : Drone's state is TURTLE");
+            if (distance_hector_turtle <= close_enough){
+                state = GOAL;
+            }  
+        }
+        else if (state == START)
+        {
+            msg_target.point.x = initial_x;
+            msg_target.point.y = initial_y;
+            pub_target.publish(msg_target);
+
+            distance_hector_start = pow((x - initial_x),2) + pow((y - initial_y),2);
+            distance_hector_start = sqrt(distance_hector_start);
+            ROS_INFO(" HMAIN : Drone's state is START");
+            if (!nh.param("/turtle/run", false) and distance_hector_start <= close_enough)
+            { // when the turtle reaches the final goal
+                state = LAND;
+            }
+            else if (distance_hector_start <= close_enough)
+            {
+                state = TURTLE; // SHOULD BE TURTLE;
+            }
+        }
+        else if (state == GOAL)
+        {
+            msg_target.point.x = goal_x;
+            msg_target.point.y = goal_y;
+            pub_target.publish(msg_target);
+
+            distance_hector_goal = pow((x - goal_x),2) + pow((y - goal_y),2);
+            distance_hector_goal = sqrt(distance_hector_goal);
+            ROS_INFO(" HMAIN : Drone's state is GOAL");
+            if(distance_hector_goal <= close_enough){
+                state = START;
+            }           
+        }
+        else if (state == LAND)
+        {
+            msg_target.point.x = initial_x;
+            msg_target.point.y = initial_y;
+            msg_target.point.z = initial_z;
+            pub_target.publish(msg_target);
+            ROS_INFO(" HMAIN : Drone's state is LAND");
+            if(z <= 0.378){
+                // Disable Rotate
+                msg_rotate.data = false;
+                pub_rotate.publish(msg_rotate);
+                break;
+            }
+        }
 
         if (verbose)
             ROS_INFO_STREAM(" HMAIN : " << to_string(state));

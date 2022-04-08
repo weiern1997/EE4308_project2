@@ -7,6 +7,8 @@
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/Empty.h>
 #include "common.hpp"
+#include <std_msgs/Float32.h>
+#include <fstream>
 
 bool target_changed = false;
 Position target;
@@ -35,6 +37,9 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "turtle_move");
     ros::NodeHandle nh;
+    // for recording data
+    std::ofstream data_file;
+    data_file.open("/home/pgokul/team01/data/move_data.txt");  
 
     // Get ROS Parameters
     bool enable_move;
@@ -83,6 +88,8 @@ int main(int argc, char **argv)
 
     // Publishers
     ros::Publisher pub_cmd = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1, true);
+    ros::Publisher pos_error_pub = nh.advertise<std_msgs::Float32>("error_pos", 1);
+    ros::Publisher ang_error_pub = nh.advertise<std_msgs::Float32>("error_ang", 1);
 
     // prepare published messages
     geometry_msgs::Twist msg_cmd; // all properties are initialised to zero.
@@ -104,6 +111,32 @@ int main(int argc, char **argv)
     double prev_time = ros::Time::now().toSec();
 
     ////////////////// DECLARE VARIABLES HERE //////////////////
+    double error_pos = dist_euc(pos_rbt, target);
+    double error_pos_prev = error_pos;
+    double I_lin = 0;
+    double D_lin = 0;
+    
+    double error_ang = limit_angle(heading(pos_rbt, target) - ang_rbt);
+    double error_ang_prev = error_ang;
+	double I_ang = 0;
+	double D_ang = 0;
+
+    double control_sig_lin;
+    double control_sig_ang;
+
+    double estimated_lin_acc;
+    double estimated_ang_acc;
+    double sat_lin_acc;
+    double sat_ang_acc;
+    bool reverse = false;
+    double error_ang_tmp;
+
+    //for rqt plot
+    std_msgs::Float32 error_pos_data;
+    std_msgs::Float32 error_ang_data;
+
+    //for data collection
+    double time_start = ros::Time::now().toSec();
 
     ROS_INFO(" TMOVE : ===== BEGIN =====");
 
@@ -121,11 +154,113 @@ int main(int argc, char **argv)
             prev_time += dt;
 
             ////////////////// MOTION CONTROLLER HERE //////////////////
+            // update previous errors
+            error_pos_prev = error_pos;
+            error_ang_prev = error_ang;
+
+            // calculate new errors
+            error_pos = dist_euc(pos_rbt, target);
+            error_ang = limit_angle(heading(pos_rbt, target) - ang_rbt);
+
+            /*// calculate integral terms
+            I_lin += error_pos * dt;
+            I_ang += error_ang * dt;
+
+            //calculate derivative terms
+            D_lin = (error_pos - error_pos_prev) / dt;
+            D_ang = (error_ang - error_ang_prev) / dt;
+
+            //calculate control signals 
+            control_sig_lin = Kp_lin * error_pos + Kd_lin * D_lin + Ki_lin * I_lin;
+            control_sig_ang = Kp_ang * error_ang + Kd_ang * D_ang + Ki_ang * I_ang;
+
+            //coupling angular error with linear velocity
+            if (error_ang < -M_PI / 2 || error_ang > M_PI / 2)
+            {
+                control_sig_lin = 0;
+            }
+            else 
+            {
+                control_sig_lin = control_sig_lin * pow(cos(error_ang), 3);
+            }*/
+
+            if (error_ang < -M_PI / 2 || error_ang > M_PI / 2)
+            {
+                reverse = true;
+                if (error_ang < M_PI / 2)
+                {
+                    error_ang_tmp = error_ang + M_PI;
+                }
+                else 
+                {
+                    error_ang_tmp = error_ang - M_PI;
+                }
+            }
+            else 
+            {
+                reverse = false;
+            }
+
+            if (reverse)
+            {
+                // calculate integral terms               
+                I_ang += error_ang_tmp * dt;
+            }
+            else 
+            {
+                // calculate integral terms
+                I_ang += error_ang * dt;
+            }
+            I_lin += error_pos * dt;
+
+            //calculate derivative terms
+            D_lin = (error_pos - error_pos_prev) / dt;
+            D_ang = (error_ang - error_ang_prev) / dt;
+
+
+            //calculate control signals 
+            control_sig_lin = Kp_lin * error_pos + Kd_lin * D_lin + Ki_lin * I_lin;
+            if (reverse)
+            {
+                control_sig_ang = Kp_ang * error_ang_tmp + Kd_ang * D_ang + Ki_ang * I_ang;
+            }
+            else 
+            {
+                control_sig_ang = Kp_ang * error_ang + Kd_ang * D_ang + Ki_ang * I_ang;
+            }
+            
+            control_sig_lin = control_sig_lin * pow(cos(error_ang), 5);
+
+
+            //constraining velocities
+            estimated_lin_acc = (control_sig_lin - cmd_lin_vel) / dt;
+            estimated_ang_acc = (control_sig_ang - cmd_ang_vel) / dt;
+
+            sat_lin_acc = sat(estimated_lin_acc, max_lin_acc);
+            sat_ang_acc = sat(estimated_ang_acc, max_ang_acc);
+
+            cmd_lin_vel = sat(cmd_lin_vel + sat_lin_acc * dt, max_lin_vel);
+            cmd_ang_vel = sat(cmd_ang_vel + sat_ang_acc * dt, max_ang_vel);
 
             // publish speeds
             msg_cmd.linear.x = cmd_lin_vel;
             msg_cmd.angular.z = cmd_ang_vel;
+            if (abs(target.x) < 1e-5 && abs(target.y) < 1e-5) {
+                msg_cmd.linear.x = 0;
+                msg_cmd.angular.z = 0;
+            }
             pub_cmd.publish(msg_cmd);
+
+            // publish errors
+            error_pos_data.data = error_pos;
+            error_ang_data.data = error_ang;
+
+            pos_error_pub.publish(error_pos_data);
+            ang_error_pub.publish(error_ang_data);
+
+            // write data to file 
+            double time_diff = ros::Time::now().toSec() - time_start;
+            data_file << time_diff << "\t" << error_pos << "\t" << heading(pos_rbt, target) << "\t" << ang_rbt << "\t" << error_ang << "\t" << target.x << "\t" << target.y << "\t" << std::endl;
 
             // verbose
             if (verbose)
@@ -144,5 +279,7 @@ int main(int argc, char **argv)
     pub_cmd.publish(msg_cmd);
 
     ROS_INFO(" TMOVE : ===== END =====");
+    // close file
+    data_file.close();
     return 0;
 }
