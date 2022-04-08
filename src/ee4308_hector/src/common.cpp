@@ -14,6 +14,21 @@ double sign(double value)
     else
         return 0;
 }
+double sat(double value, double value_limit)
+{
+    if (value > value_limit)
+    {
+        return value_limit;
+    }
+    else if (value < -value_limit)
+    {
+        return -value_limit;
+    }
+    else
+    {
+        return value;
+    }
+}
 double dist_oct(Index src, Index tgt)
 {
     return dist_oct(src.i, src.j, tgt.i, tgt.j);
@@ -55,12 +70,8 @@ double dist_euc(double src_x, double src_y, double tgt_x, double tgt_y)
 }
 double heading(Position src, Position tgt)
 {
-    return heading(src.x, src.y, tgt.x, tgt.y);
-}
-double heading(double src_x, double src_y, double tgt_x, double tgt_y)
-{
-    double Dx = tgt_x - src_x;
-    double Dy = tgt_y - src_y;
+    double Dx = tgt.x - src.x;
+    double Dy = tgt.y - src.y;
 
     return atan2(Dy, Dx);
 }

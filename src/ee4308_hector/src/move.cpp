@@ -130,6 +130,34 @@ int main(int argc, char **argv)
     double dt;
     double prev_time = ros::Time::now().toSec();
 
+    ////////////////// DECLARE VARIABLES HERE //////////////////
+    double pos_error_x = x - target_x;
+    double pos_error_y = y - target_y;
+    double pos_error_z = z - target_z;
+    double prev_pos_error_x = pos_error_x;
+    double prev_pos_error_y = pos_error_y;
+    double prev_pos_error_z = pos_error_z;
+    double summation_pos_x = pos_error_x;
+    double summation_pos_y = pos_error_y;
+    double summation_pos_z = pos_error_z;
+
+    double P_constant_x = 0;
+    double P_constant_y = 0;
+    double P_constant_z = 0;
+    double D_constant_x = 0;
+    double D_constant_y = 0;
+    double D_constant_z = 0;
+    double I_constant_x = 0;
+    double I_constant_y = 0;
+    double I_constant_z = 0;
+    double output_lin_x = 0;
+    double output_lin_y = 0;
+    double output_lin_z = 0;
+
+    double lin_acc_x = 0;
+    double lin_acc_y = 0;
+    double lin_acc_z = 0;
+
     // main loop
     while (ros::ok() && nh.param("run", true))
     {
@@ -140,6 +168,52 @@ int main(int argc, char **argv)
         if (dt == 0) // ros doesn't tick the time fast enough
             continue;
         prev_time += dt;
+
+        //// PID controller here ////
+        // X-PID //
+        pos_error_x = target_x - x;
+        summation_pos_x += pos_error_x * dt;
+
+        P_constant_x = Kp_lin * pos_error_x;
+        I_constant_x = Ki_lin * summation_pos_x;
+        D_constant_x = Kd_lin * ((pos_error_x - prev_pos_error_x) / dt);
+
+        output_lin_x = P_constant_x + D_constant_x + I_constant_x;
+        prev_pos_error_x = pos_error_x;
+
+        // Y-PID //
+        pos_error_y = target_y - y;
+        summation_pos_y += pos_error_y * dt;
+
+        P_constant_y = Kp_lin * pos_error_y;
+        I_constant_y = Ki_lin * summation_pos_y;
+        D_constant_y = Kd_lin * ((pos_error_y - prev_pos_error_y) / dt);
+
+        output_lin_y = P_constant_y + D_constant_y + I_constant_y;
+        prev_pos_error_y = pos_error_y;
+
+        // Z-PID //
+        pos_error_z = target_z - z;
+        summation_pos_z += pos_error_z * dt;
+
+        P_constant_z = Kp_lin * pos_error_z;
+        I_constant_z = Ki_lin * summation_pos_z;
+        D_constant_z = Kd_lin * ((pos_error_z - prev_pos_error_z) / dt);
+
+        output_lin_z = P_constant_z + D_constant_z + I_constant_z;
+        prev_pos_error_z = pos_error_z;
+
+        lin_acc_x = (output_lin_x - cmd_lin_vel_x) / dt;
+        cmd_lin_vel_x = sat(output_lin_x + (lin_acc_x * dt), max_lin_vel);
+
+        lin_acc_y = (output_lin_y - cmd_lin_vel_y) / dt;
+        cmd_lin_vel_y = sat(output_lin_y + (lin_acc_y * dt), max_lin_vel);
+
+        lin_acc_z = (output_lin_z - cmd_lin_vel_z) / dt;
+        cmd_lin_vel_z = sat(output_lin_z + (lin_acc_z * dt), max_lin_vel);
+
+        ROS_INFO(" HMOVE : The speeds are (%6.3f, %6.3f, %6.3f", cmd_lin_vel_x, cmd_lin_vel_y, cmd_lin_vel_z);
+
 
         // publish speeds
         msg_cmd.linear.x = cmd_lin_vel_x;

@@ -21,7 +21,7 @@ straight_thresh: 0.05
 motion_iter_rate: 50
 
 # move
-enable_move: false #false
+enable_move: true #false
 verbose_move: false
 Kp_lin: 5.0 #3
 Ki_lin: 0.0
