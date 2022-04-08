@@ -145,7 +145,7 @@ void cbSonar(const sensor_msgs::Range::ConstPtr &msg)
 
     cv::Matx21d Z = {z_snr,0};
     cv::Matx12d H = {1,0};
-    cv::Mat21d K = P_z * H.t() * (H * P_z * H.t() + r_snr_z).inv();
+    cv::Matx21d K = P_z * H.t() * (H * P_z * H.t() + r_snr_z).inv();
 
     Z(0) = Z(0) + K(0,0) * (z_snr - Z(0));
     P_z = P_z - K * H * P_z;
