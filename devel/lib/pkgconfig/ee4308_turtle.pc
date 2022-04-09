@@ -1,8 +1,0 @@
-prefix=/home/pgokul/EE4308_project2/devel
-
-Name: ee4308_turtle
-Description: Description of ee4308_turtle
-Version: 0.0.0
-Cflags: 
-Libs: -L${prefix}/lib 
-Requires: message_runtime message_generation sensor_msgs std_msgs geometry_msgs nav_msgs roscpp rospy
