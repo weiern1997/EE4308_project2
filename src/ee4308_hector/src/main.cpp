@@ -10,6 +10,7 @@
 #include <geometry_msgs/Twist.h>
 #include <std_msgs/Bool.h>
 #include <opencv2/core/core.hpp>
+#includ "trajectory.hpp"
 #include "common.hpp"
 #define NaN std::numeric_limits<double>::quiet_NaN()
 
@@ -164,6 +165,10 @@ int main(int argc, char **argv)
     double distance_hector_turtle = 0;
     double distance_hector_goal = 0;
     double distance_hector_start = 0;
+    double target_x, target_y;
+    std::vector<Position> trajectory;
+    Position pos_target;
+    int t=0;
 
     while (ros::ok() && nh.param("run", true))
     {
@@ -194,25 +199,60 @@ int main(int argc, char **argv)
         }
         else if (state == TURTLE)
         {
-            dx = (turtle_x - prev_turtle_x) / dt;
-            dy = (turtle_y - prev_turtle_y) / dt;
-
-            /// Find the future point of turtle using look ahead ///
-            msg_target.point.x = turtle_x + (dx * look_ahead);
-            msg_target.point.y = turtle_y + (dy * look_ahead);
-            pub_target.publish(msg_target);
-            prev_turtle_x = turtle_x;
-            prev_turtle_y = turtle_y;
-
+            if(trajectory.empty())
+            {
+                dx = (turtle_x - prev_turtle_x) / dt;
+                dy = (turtle_y - prev_turtle_y) / dt;
+                target_x = turtle_x + dx * look_ahead;
+                target_y = turtle_y + dy * look_ahead;
+                prev_turtle_x = turtle_x;
+                prev_turtle_y = turtle_y;
+                trajectory = generate_trajectory(//To be implemented
+                    initial_x, initial_y, initial_z,
+                    goal_x, goal_y, height,
+                    look_ahead, close_enough, average_speed,
+                    dx, dy, dt);
+                pos_target = trajectory[t];
+            }
+            else if(dist_euc(x,y,trajectory[t].x,trajectory[t].y) < close_enough)
+            {
+                t++;
+                if(t >= trajectory.size())
+                {
+                    trajectory.clear();
+                    t = 0;
+                }
+                else
+                {   
+                    pos_target = trajectory[t];
+                    msg_target.point.x = pos_target.x
+                    msg_target.point.y = pos_target.y
+                    pub_target.publish(msg_target);
+                }
+                
+            }
             distance_hector_turtle = pow((x - turtle_x),2) + pow((y - turtle_y),2);
             distance_hector_turtle = sqrt(distance_hector_turtle);
             ROS_INFO(" HMAIN : Drone's state is TURTLE");
             if (distance_hector_turtle <= close_enough){
                 state = GOAL;
+                trajectory.clear();
+                t = 0;
             }  
         }
         else if (state == START)
         {
+            if(trajectory.empty())
+            {
+                target_x = initial_x;
+                target_y = initial_y;
+                trajectory = generate_trajectory(//To be implemented
+                    initial_x, initial_y, initial_z,
+                    goal_x, goal_y, height,
+                    look_ahead, close_enough, average_speed,
+                    dx, dy, dt);
+                pos_target = trajectory[t];
+            }
             msg_target.point.x = initial_x;
             msg_target.point.y = initial_y;
             pub_target.publish(msg_target);
